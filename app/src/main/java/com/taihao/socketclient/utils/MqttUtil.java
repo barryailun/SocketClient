@@ -7,6 +7,8 @@ import com.taihao.socketclient.callback.MqttCallbackBus;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.persist.MqttDefaultFilePersistence;
 
 /**
  * @author chenwei
@@ -22,18 +24,18 @@ public class MqttUtil {
     /**
      * mqtt回调
      */
-    private MqttCallback mqttCallback;
+    private MqttCallback callback;
     /**
      * mqtt客户端
      */
-    private MqttClient mqttClient;
+    private static MqttClient client;
     /**
      * mqtt连接选项
      */
     private MqttConnectOptions conOpt;
 
     private MqttUtil() {
-        mqttCallback = new MqttCallbackBus();
+        callback = new MqttCallbackBus();
     }
 
     public static MqttUtil getInstance() {
@@ -69,10 +71,49 @@ public class MqttUtil {
     public void createConnect(String brokerUrl, String userName,
                               String password, String clientId,
                               String topic) {
-
+        String tmpDir = System.getProperty("java.io.tmpDir");
+        // mqtt默认文件持久化
+        MqttDefaultFilePersistence datasource = new MqttDefaultFilePersistence(tmpDir);
+        try {
+            conOpt = new MqttConnectOptions();
+            conOpt.setMqttVersion(MqttConnectOptions.MQTT_VERSION_3_1);
+            // 设置清空session，false表示服务器会保留客户端记录
+            conOpt.setCleanSession(false);
+            if(userName != null) {
+                conOpt.setUserName(userName);
+            }
+            if (password != null) {
+                conOpt.setPassword(password.toCharArray());
+            }
+            // 客户端是否尝试重连到数据库
+            conOpt.setAutomaticReconnect(true);
+            client = new MqttClient(brokerUrl, clientId, datasource);
+            client.setCallback(callback);
+            doConnect();
+        } catch (MqttException e) {
+            Log.e("MqttUtil", "createConnect: " + e.toString());
+        }
     }
 
-    private static void disConnect() {
+    /**
+     * 建立连接
+     */
+    private void doConnect() {
+        if (client != null) {
+            try {
+                client.connect(conOpt);
+            } catch (Exception e) {
+                Log.e("MqttManager", "doConnect : " + e.toString());
+            }
+        }
+    }
 
+    private static void disConnect() throws MqttException{
+        if(client != null &&client.isConnected())
+            client.disconnect();
+    }
+
+    public static boolean isConnected() {
+        return client != null &&client.isConnected();
     }
 }
